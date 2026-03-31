@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BookLive 売上集計</title>
+<style>
+body { background:#111; color:#eee; font-family:sans-serif; padding:16px; margin:0; }
+h1 { color:#9b8ff7; font-size:1.1rem; margin-bottom:4px; }
+p { color:#888; font-size:0.8rem; margin-bottom:20px; }
+label { display:block; font-size:0.78rem; color:#aaa; margin-bottom:4px; }
+input[type=month], textarea {
+  width:100%; box-sizing:border-box;
+  background:#1e1e2e; border:1px solid #333; color:#eee;
+  padding:8px 10px; border-radius:6px; font-size:0.88rem;
+  margin-bottom:12px; display:block;
+}
+textarea { font-family:monospace; font-size:0.7rem; resize:vertical; min-height:120px; }
+button {
+  background:#9b8ff7; color:#fff; border:none;
+  padding:10px 20px; border-radius:6px;
+  font-size:0.9rem; font-weight:bold; cursor:pointer;
+  margin-right:8px; margin-bottom:16px;
+}
+button.sub { background:#1e1e2e; color:#aaa; border:1px solid #333; }
+.card {
+  background:#1a1a2e; border:1px solid #333; border-radius:8px;
+  padding:10px 14px; margin-bottom:8px;
+  display:flex; justify-content:space-between; align-items:center;
+}
+.card-month { color:#e86fc0; font-weight:bold; font-size:0.9rem; }
+.card-info { color:#888; font-size:0.75rem; margin-top:2px; }
+.card-total { color:#4fd1a0; font-weight:bold; }
+.del { background:none; border:none; color:#666; cursor:pointer; font-size:1.1rem; padding:4px 8px; margin:0; }
+.divider { border:none; border-top:1px solid #333; margin:20px 0; }
+.tab-row { display:flex; gap:6px; margin-bottom:14px; flex-wrap:wrap; }
+.tab { background:#1e1e2e; color:#888; border:1px solid #333; padding:5px 14px; border-radius:20px; font-size:0.8rem; cursor:pointer; margin:0; }
+.tab.on { background:#9b8ff7; color:#fff; border-color:#9b8ff7; font-weight:bold; }
+table { width:100%; border-collapse:collapse; font-size:0.8rem; }
+th { background:#1e1e2e; color:#888; padding:8px 10px; text-align:right; border-bottom:1px solid #333; white-space:nowrap; }
+th.l { text-align:left; }
+td { padding:8px 10px; text-align:right; border-bottom:1px solid #222; font-family:monospace; }
+td.l { text-align:left; font-family:sans-serif; }
+td.sm { font-size:0.72rem; color:#666; }
+.green { color:#4fd1a0; }
+.yellow { color:#f5c842; font-weight:bold; }
+.err { color:#e86fc0; font-size:0.8rem; margin-bottom:8px; }
+.empty { color:#666; text-align:center; padding:30px 0; font-size:0.85rem; }
+.result-label { color:#4fd1a0; font-size:0.75rem; font-family:monospace; margin-bottom:12px; }
+</style>
+</head>
+<body>
+
+<h1>BookLive 売上集計</h1>
+<p>月を選んでTSVを貼り付け → 追加を繰り返して集計</p>
+
+<label>集計年月</label>
+<input type="month" id="monthIn">
+
+<label>TSVデータ（ヘッダー行込みでOK）</label>
+<textarea id="tsvIn" placeholder="レーベル名&#9;タイトル名&#9;コンテンツ名&#9;種別&#9;単価&#9;支払料率(%)&#9;販売数&#9;税抜金額&#10;クロスフォリオ出版&#9;黒須さん&#9;…"></textarea>
+
+<div id="err" class="err" style="display:none"></div>
+
+<button onclick="add()">＋ 追加</button>
+<button class="sub" onclick="resetAll()">リセット</button>
+
+<div id="cards"></div>
+<hr class="divider" id="divider" style="display:none">
+<div id="result"></div>
+
+<script>
+var entries = [];
+var tab = 'monthly';
+
+(function(){
+  var now = new Date();
+  var m = String(now.getMonth()+1).padStart(2,'0');
+  document.getElementById('monthIn').value = now.getFullYear() + '-' + m;
+})();
+
+function showErr(msg){ var e=document.getElementById('err'); e.textContent='⚠ '+msg; e.style.display='block'; }
+function hideErr(){ document.getElementById('err').style.display='none'; }
+function fmt(n){ return Math.round(n).toLocaleString('ja-JP'); }
+
+function parseTSV(text){
+  var lines = text.trim().split('\n').filter(function(l){ return l.trim(); });
+  if(!lines.length) return [];
+  var start = (lines[0].indexOf('レーベル')>=0 || lines[0].indexOf('タイトル')>=0) ? 1 : 0;
+  var rows = [];
+  for(var i=start; i<lines.length; i++){
+    var c = lines[i].split('\t');
+    if(c.length < 8) continue;
+    var r = { title:(c[1]||'').trim(), content:(c[2]||'').trim(), count:parseInt(c[6])||0, amount:parseFloat(c[7])||0 };
+    if(r.title) rows.push(r);
+  }
+  return rows;
+}
+
+function add(){
+  hideErr();
+  var month = document.getElementById('monthIn').value;
+  var tsv = document.getElementById('tsvIn').value;
+  if(!month){ showErr('月を選択してください'); return; }
+  if(!tsv.trim()){ showErr('TSVを貼り付けてください'); return; }
+  var rows = parseTSV(tsv);
+  if(!rows.length){ showErr('データが読み取れませんでした'); return; }
+  entries = entries.filter(function(e){ return e.month !== month; });
+  entries.push({ month:month, rows:rows });
+  entries.sort(function(a,b){ return a.month.localeCompare(b.month); });
+  document.getElementById('tsvIn').value = '';
+  render();
+}
+
+function removeEntry(month){
+  entries = entries.filter(function(e){ return e.month !== month; });
+  render();
+}
+
+function resetAll(){
+  if(entries.length && !confirm('全データを削除しますか？')) return;
+  entries = [];
+  render();
+}
+
+function setTab(t){ tab=t; render(); }
+
+function render(){
+  var cards = document.getElementById('cards');
+  cards.innerHTML = entries.map(function(e){
+    var total = e.rows.reduce(function(s,r){ return s+r.amount; },0);
+    var titles = {};
+    e.rows.forEach(function(r){ titles[r.title]=1; });
+    var tc = Object.keys(titles).length;
+    return '<div class="card"><div><div class="card-month">'+e.month+'</div><div class="card-info">税抜 <span class="card-total">¥'+fmt(total)+'</span>　'+tc+'タイトル / '+e.rows.length+'行</div></div><button class="del" onclick="removeEntry(\''+e.month+'\')">✕</button></div>';
+  }).join('');
+
+  var divider = document.getElementById('divider');
+  var result = document.getElementById('result');
+
+  if(!entries.length){
+    divider.style.display='none';
+    result.innerHTML='<div class="empty">データを追加すると集計が表示されます</div>';
+    return;
+  }
+  divider.style.display='block';
+  var grandTotal = entries.reduce(function(s,e){ return s+e.rows.reduce(function(ss,r){ return ss+r.amount; },0); },0);
+  result.innerHTML =
+    '<div class="result-label">// RESULTS　累計: <span class="yellow">¥'+fmt(grandTotal)+'</span></div>'+
+    '<div class="tab-row">'+
+    '<button class="tab'+(tab==='monthly'?' on':'')+'" onclick="setTab(\'monthly\')">月別合計</button>'+
+    '<button class="tab'+(tab==='title'?' on':'')+'" onclick="setTab(\'title\')">タイトル別×月</button>'+
+    '<button class="tab'+(tab==='content'?' on':'')+'" onclick="setTab(\'content\')">コンテンツ別</button>'+
+    '</div>'+
+    (tab==='monthly' ? monthlyHTML() : tab==='title' ? titleHTML() : contentHTML());
+}
+
+function monthlyHTML(){
+  var grandTotal=0, grandCount=0;
+  var rows = entries.map(function(e){
+    var total=e.rows.reduce(function(s,r){ return s+r.amount; },0);
+    var count=e.rows.reduce(function(s,r){ return s+r.count; },0);
+    grandTotal+=total; grandCount+=count;
+    return '<tr><td class="l">'+e.month+'</td><td class="green">¥'+fmt(total)+'</td><td>'+count.toLocaleString()+'</td></tr>';
+  }).join('');
+  return '<table><thead><tr><th class="l">集計年月</th><th>税抜金額</th><th>販売数</th></tr></thead><tbody>'+rows+'<tr><td class="l yellow">合計</td><td class="yellow">¥'+fmt(grandTotal)+'</td><td class="yellow">'+grandCount.toLocaleString()+'</td></tr></tbody></table>';
+}
+
+function titleHTML(){
+  var months = entries.map(function(e){ return e.month; });
+  var map = {};
+  entries.forEach(function(e){ e.rows.forEach(function(r){
+    if(!map[r.title]) map[r.title]={};
+    map[r.title][e.month]=(map[r.title][e.month]||0)+r.amount;
+  }); });
+  var titles = Object.keys(map).sort();
+  var grandTotal = entries.reduce(function(s,e){ return s+e.rows.reduce(function(ss,r){ return ss+r.amount; },0); },0);
+  var heads = months.map(function(m){ return '<th>'+m+'</th>'; }).join('');
+  var rows = titles.map(function(t){
+    var total = months.reduce(function(s,m){ return s+(map[t][m]||0); },0);
+    var cells = months.map(function(m){ return map[t][m]?'<td class="green">¥'+fmt(map[t][m])+'</td>':'<td style="color:#444">—</td>'; }).join('');
+    return '<tr><td class="l">'+t+'</td>'+cells+'<td class="yellow">¥'+fmt(total)+'</td></tr>';
+  }).join('');
+  var totalCells = months.map(function(m){
+    var found = entries.filter(function(e){ return e.month===m; })[0];
+    var s = found ? found.rows.reduce(function(ss,r){ return ss+r.amount; },0) : 0;
+    return '<td class="yellow">¥'+fmt(s)+'</td>';
+  }).join('');
+  return '<div style="overflow-x:auto"><table><thead><tr><th class="l">タイトル</th>'+heads+'<th>合計</th></tr></thead><tbody>'+rows+'<tr><td class="l yellow">合計</td>'+totalCells+'<td class="yellow">¥'+fmt(grandTotal)+'</td></tr></tbody></table></div>';
+}
+
+function contentHTML(){
+  var map = {};
+  entries.forEach(function(e){ e.rows.forEach(function(r){
+    var k=r.title+'||'+r.content;
+    if(!map[k]) map[k]={title:r.title,content:r.content,amount:0,count:0};
+    map[k].amount+=r.amount; map[k].count+=r.count;
+  }); });
+  var items = Object.values(map).sort(function(a,b){ return a.title.localeCompare(b.title); });
+  var rows = items.map(function(d){
+    return '<tr><td class="l">'+d.title+'</td><td class="l sm">'+d.content+'</td><td class="green">¥'+fmt(d.amount)+'</td><td>'+d.count.toLocaleString()+'</td></tr>';
+  }).join('');
+  return '<table><thead><tr><th class="l">タイトル</th><th class="l">コンテンツ</th><th>税抜金額</th><th>販売数</th></tr></thead><tbody>'+rows+'</tbody></table>';
+}
+
+render();
+</script>
+</body>
+</html>
