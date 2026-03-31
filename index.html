@@ -58,7 +58,8 @@ td.sm { font-size:0.72rem; color:#666; }
 <input type="month" id="monthIn">
 
 <label>TSVデータ（ヘッダー行込みでOK）</label>
-<textarea id="tsvIn" placeholder="レーベル名&#9;タイトル名&#9;コンテンツ名&#9;種別&#9;単価&#9;支払料率(%)&#9;販売数&#9;税抜金額&#10;クロスフォリオ出版&#9;黒須さん&#9;…"></textarea>
+<textarea id="tsvIn" placeholder="レーベル名	タイトル名	コンテンツ名	種別	単価	支払料率(%)	販売数	税抜金額
+クロスフォリオ出版	黒須さん	…"></textarea>
 
 <div id="err" class="err" style="display:none"></div>
 
@@ -77,6 +78,11 @@ var tab = 'monthly';
   var now = new Date();
   var m = String(now.getMonth()+1).padStart(2,'0');
   document.getElementById('monthIn').value = now.getFullYear() + '-' + m;
+  try {
+    var saved = localStorage.getItem('booklive_entries');
+    if (saved) entries = JSON.parse(saved);
+  } catch(e) {}
+  render();
 })();
 
 function showErr(msg){ var e=document.getElementById('err'); e.textContent='⚠ '+msg; e.style.display='block'; }
@@ -109,17 +115,24 @@ function add(){
   entries.push({ month:month, rows:rows });
   entries.sort(function(a,b){ return a.month.localeCompare(b.month); });
   document.getElementById('tsvIn').value = '';
+  save();
   render();
+}
+
+function save(){
+  try { localStorage.setItem('booklive_entries', JSON.stringify(entries)); } catch(e) {}
 }
 
 function removeEntry(month){
   entries = entries.filter(function(e){ return e.month !== month; });
+  save();
   render();
 }
 
 function resetAll(){
   if(entries.length && !confirm('全データを削除しますか？')) return;
   entries = [];
+  save();
   render();
 }
 
