@@ -2,10 +2,10 @@ name: Monthly Image Tweet
 
 on:
   schedule:
-    # 毎月1日 JST 9:00 (UTC 0:00)
-    - cron: '0 0 1 * *'
-    # 毎月15日 JST 9:00 (UTC 0:00)
-    - cron: '0 0 15 * *'
+    # 毎月10日 JST 20:00 (UTC 11:00)
+    - cron: '0 11 10 * *'
+    # 毎月20日 JST 20:00 (UTC 11:00)
+    - cron: '0 11 20 * *'
   workflow_dispatch:  # 手動実行も可能
 
 jobs:
